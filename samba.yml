@@ -1,0 +1,74 @@
+---
+- hosts: samba
+  tasks:
+    - name: "установка пакетов"
+      become: yes
+      apt: name={{item}} state=present
+      with_items:
+        - "krb5-user" 
+        - "samba" 
+        - "winbind" 
+        - "libpam-krb5"
+        - "libpam-winbind"
+        - "libnss-winbind"
+        - "ntp"
+        - "smbclient"
+        - "libpam-ck-connector"
+
+    - name: "настройка resolv.conf"
+      become: yes
+      lineinfile: line={{item}} state=present path=/etc/resolv.conf
+      with_items:
+        - "domain example.com"
+        - "search example.com"
+      
+    - name: "настройка hosts"
+      become: yes
+      lineinfile: path=/etc/hosts state=present regexp="^127.0.1.1" line="127.0.1.1 {{inventory_hostname}}.example.com {{inventory_hostname}}"
+            
+    - name: "настройка limits.conf"
+      become: yes
+      lineinfile: path=/etc/security/limits.conf state=present line={{item}}
+      with_items:
+        - "*               -    nofile            16384"
+        - "root            -    nofile            16384"
+      
+      
+    - name: "настройка nsswitch.conf"
+      become: yes
+      lineinfile: path=/etc/nsswitch.conf state=present regexp={{item.regexp}} line={{item.line}}
+      with_items:
+        - { regexp: "^passwd:", line: "passwd:         compat winbind"}
+        - { regexp: "^group:", line: "group:          compat winbind"}
+        - { regexp: "^files:", line: "files:          dns mdns4_minimal[NotFoud=return] mdns4"}
+
+    - name: "копировать файлы конфигурации"
+      become: yes
+      template: src={{item.src}} dest={{item.dest}}
+      with_items:
+        - { src: "{{playbook_dir}}/ntp.conf", dest: "/etc/"}
+        - { src: "{{playbook_dir}}/krb5.conf", dest: "/etc/"}
+        - { src: "{{playbook_dir}}/smb.conf", dest: "/etc/samba/"}
+        - { src: "{{playbook_dir}}/common-auth", dest: "/etc/pam.d/"}
+        - { src: "{{playbook_dir}}/common-account", dest: "/etc/pam.d/"}
+        - { src: "{{playbook_dir}}/common-session", dest: "/etc/pam.d/"}
+        - { src: "{{playbook_dir}}/common-password", dest: "/etc/pam.d/"}
+      
+    - name: "перезапустить службу"
+      become: yes
+      systemd: name={{item}} state=restarted
+      with_items:
+        - "ntp"
+        - "smbd"
+        - "winbind"
+        - "systemd-logind"
+      ignore_errors: yes
+      register: restart
+
+    - debug: var=restart
+
+    # - name: "перенести запуск Winbind при загрузке системы после всех остальных служб"
+    #   become: yes
+    #   shell: 'sudo bash -c "for i in 2 3 4 5; do mv /etc/rc$i.d/S20winbind /etc/rc$i.d/S99winbind; done"'
+
+

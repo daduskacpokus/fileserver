@@ -1,0 +1,4 @@
+auth        required      pam_env.so
+auth        sufficient    pam_unix.so likeauth nullok try_first_pass
+auth        sufficient    pam_winbind.so use_first_pass krb5_auth krb5_ccache_type=FILE
+auth        required      pam_deny.so
